@@ -2,10 +2,18 @@
 
 <html>
   <head>
-    <title>A Multiblog Platform</title>
+    <title>A Multiblog Platform!</title>
   </head>
 
   <body>
+
     <h2>Welcome, {{username}}!</h2>
+
+    <div id="content">
+     	  {% for p in posts %}
+    		{{ p.render() | safe }}
+    		<br><br>
+  		  {% endfor %}
+  	</div>
   </body>
 </html>

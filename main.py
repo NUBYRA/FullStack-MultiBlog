@@ -26,9 +26,6 @@ class BlogHandler(webapp2.RequestHandler):
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
 
-class MainPage(BlogHandler):
-    def get(self):
-        self.write("Welcome to Multiblog!!")
 
 def ValidateUsername(username):
 	username_pattern = r"^[a-zA-Z0-9_-]{3,15}$"
@@ -45,7 +42,7 @@ def ValidateEmail(email):
 	pattern = re.compile(email_pattern)
 	return email and pattern.match(email)
 
-class Signup(BlogHandler):
+class SignupHandler(BlogHandler):
 
     def get(self):
         self.render('signup.html')
@@ -79,16 +76,34 @@ class Signup(BlogHandler):
         else:
             self.redirect('/welcome?username=' + username)
 
-class Welcome(BlogHandler):
+class WelcomeHandler(BlogHandler):
     def get(self):
         username = self.request.get('username')
         params = dict(username = username)
         if ValidateUsername(username):
+            posts = db.GqlQuery("select * from BlogPost order by created desc limit 10")
             self.render('welcome.html', **params)
         else:
             self.redirect('/signup')
 
-app = webapp2.WSGIApplication([('/', MainPage), 
-                               ('/signup', Signup),
-                               ('/welcome', Welcome)],
+class BlogPost(db.Model):
+    title = db.StringProperty(required = True)
+    subject = db.StringProperty(required = True)
+    content = db.TextProperty(required = True)
+    created = db.DateTimeProperty(auto_now_add=True)
+    last_modified = db.DateTimeProperty(auto_now_add=True)
+
+    def render(self):
+        self._render_text = self.content.replace('\n', '<br>')
+        return render_str("post.html", p = self)
+
+class BlogFrontHandler(BlogHandler):
+    def get(self):
+        posts = db.GqlQuery("select * from BlogPost order by created desc limit 10")
+        self.render('front.html', posts = posts)
+
+
+app = webapp2.WSGIApplication([('/', BlogFrontHandler), 
+                               ('/signup', SignupHandler),
+                               ('/welcome', WelcomeHandler)],
                               debug=True)
