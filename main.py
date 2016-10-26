@@ -1,6 +1,7 @@
 import os
 import re
 from string import letters
+import random 
 
 import webapp2
 import jinja2
@@ -102,8 +103,78 @@ class BlogFrontHandler(BlogHandler):
         posts = db.GqlQuery("select * from BlogPost order by created desc limit 10")
         self.render('front.html', posts = posts)
 
+def users_key(group = 'default'):
+    return db.Key.from_path('users', group)
+
+def make_salt(length=5):
+    return ''.join(random.choice(string.letters) for i in range(length))
+
+def make_pwd_hash(user, pwd, salt=None):
+    if not salt:
+        salt = make_salt()
+    h = hashlib.sha256(user + pwd + salt).hexdigest()
+    return '%s,%s' % (salt,h)
+
+def validate_hashed_pwd(user,pwd,h):
+    salt = h.split(',')[0]
+    return h == make_pw_hash(user, pwd, salt)
+
+class User(db.Model):
+    
+    user = db.StringProperty(required = True)
+    pwd_hash = db.StringProperty(required = True)
+    email = db.StringProperty(required = True)
+
+    @classmethod
+    def get_user(cls,user):
+        u = User.all().filter('user =', user).get()
+        return u 
+    
+    @classmethod
+    def signin(cls,user,pwd):
+        u = cls.get_user(user)
+        if u and validate_hashed_pwd(user,pwd,u.pwd_hash):
+            return u 
+
+    @classmethod 
+    def register(cls,user,pwd,email):
+        pwd_hash = make_pwd_hash(user, pwd)
+        return User(parent = users_key(), user = user, pwd_hash = pwd_hash, email = email)
+
+class SigninHandler(BlogHandler):
+    
+    def get(self):
+        self.render('signin.html')
+    
+    def post(self):
+        username = self.request.get('username')
+        password = self.request.get('password')
+        u = User.signin(username,password)
+        if u:
+            self.redirect('/')
+        else:
+            msg = "Invalid login info"
+            self.render('signin.html', error = msg)
+
+class RegisterHandler(SignupHandler):
+    
+    def done(self):
+        u = User.get_user(self.username)
+        if u:
+            msg = "User already exist!"
+            self.render('signin.html', error_username = msg)
+        else: 
+            u = User.register(self.username, self.password, self.email)
+            u.put()
+            self.redirect('/welcome')
+
+class SignoutHandler(BlogHandler):
+    
+    def get(self):
+        self.redirect('/')
 
 app = webapp2.WSGIApplication([('/', BlogFrontHandler), 
-                               ('/signup', SignupHandler),
-                               ('/welcome', WelcomeHandler)],
-                              debug=True)
+                               ('/signup', RegisterHandler),
+                               ('/welcome', WelcomeHandler),
+                               ('/signin', SigninHandler), 
+                               ('/signout', SignoutHandler)], debug=True)
