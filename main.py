@@ -2,7 +2,8 @@ import os
 import re
 from string import letters
 import random 
-
+import hashlib
+import hmac 
 import webapp2
 import jinja2
 
@@ -11,6 +12,17 @@ from google.appengine.ext import db
 template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 jinja_env = jinja2.Environment(loader = jinja2.FileSystemLoader(template_dir),
                                autoescape = True)
+
+secret = 'notyoursecret'
+
+def make_hashed_val(val):
+    hashed_val = hmac.new(secret,val).hexdigest()
+    return '%s|%s' % (val,hashed_val)
+
+def check_hashed_val(hashed_val):
+    val = hashed_val.split('|')[0]
+    if hashed_val == make_hashed_val(val):
+        return val 
     
 def render_str(template, **params):
     t = jinja_env.get_template(template)
@@ -27,6 +39,20 @@ class BlogHandler(webapp2.RequestHandler):
     def write(self, *a, **kw):
         self.response.out.write(*a, **kw)
 
+    def set_secure_cookie(self,user,val):
+        hashed_val = make_hashed_val(val)
+        self.response.headers.add_header('Set-Cookie','%s=%s; Path=/' % (user,hashed_val))
+
+    def read_secure_cookie(self,user):
+        cookie_val = self.request.cookies.get(user)
+        if check_hashed_val(cookie_val):
+            return cookie_val
+
+    def login(self,user):
+        self.set_secure_cookie('user_id',str(user.key().id()))
+
+    def logout(self):
+        self.response.headers.add_header('Set-Cookie','user_id=; Path=/')
 
 def ValidateUsername(username):
 	username_pattern = r"^[a-zA-Z0-9_-]{3,15}$"
@@ -151,6 +177,7 @@ class SigninHandler(BlogHandler):
         password = self.request.get('password')
         u = User.signin(username,password)
         if u:
+            self.login(u)
             self.redirect('/')
         else:
             msg = "Invalid login info"
@@ -171,6 +198,7 @@ class RegisterHandler(SignupHandler):
 class SignoutHandler(BlogHandler):
     
     def get(self):
+        self.logout()
         self.redirect('/')
 
 app = webapp2.WSGIApplication([('/', BlogFrontHandler), 
@@ -178,3 +206,4 @@ app = webapp2.WSGIApplication([('/', BlogFrontHandler),
                                ('/welcome', WelcomeHandler),
                                ('/signin', SigninHandler), 
                                ('/signout', SignoutHandler)], debug=True)
+
